@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Flight Simulator</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        canvas { 
+            display: block; 
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #startScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+        }
+        #startScreen h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+        }
+        #startScreen input {
+            padding: 10px;
+            margin-bottom: 20px;
+            width: 300px;
+            font-size: 1.2em;
+            text-align: center;
+        }
+        #startButton {
+            padding: 10px 20px;
+            font-size: 1.5em;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #startButton:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div id="startScreen">
+        <h1>Simple Flight Simulator</h1>
+        <input type="text" id="playerName" placeholder="Enter your name">
+        <button id="startButton">Start Flying</button>
+    </div>
+    
+    <div id="info">
+        <div>Speed: <span id="speed">0</span> km/h</div>
+        <div>Altitude: <span id="altitude">0</span> m</div>
+        <div>Controls: W/S - Pitch, A/D - Roll, Q/E - Yaw, Space - Boost</div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // Game state
+        let gameStarted = false;
+        let playerName = '';
+        let aircraft = null;
+        let speed = 0;
+        let altitude = 0;
+        
+        // DOM elements
+        const startScreen = document.getElementById('startScreen');
+        const playerNameInput = document.getElementById('playerName');
+        const startButton = document.getElementById('startButton');
+        const speedElement = document.getElementById('speed');
+        const altitudeElement = document.getElementById('altitude');
+        
+        // Set up scene
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB); // Sky blue
+        
+        // Set up camera
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 20000);
+        camera.position.set(0, 100, 300);
+        
+        // Set up renderer
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        
+        // Add lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+        
+        // Create ground
+        const groundGeometry = new THREE.PlaneGeometry(10000, 10000);
+        const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x1E8449 }); // Green
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -200;
+        scene.add(ground);
+        
+        // Add mountains
+        function createMountain(x, z, height, radius) {
+            const mountainGeometry = new THREE.ConeGeometry(radius, height, 6);
+            const mountainMaterial = new THREE.MeshLambertMaterial({ color: 0x808080 });
+            const mountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
+            mountain.position.set(x, height / 2 - 200, z);
+            scene.add(mountain);
+        }
+        
+        // Create several mountains
+        createMountain(-500, -800, 600, 400);
+        createMountain(800, -300, 800, 600);
+        createMountain(-800, 500, 900, 700);
+        createMountain(200, 1000, 700, 500);
+        
+        // Create aircraft
+        function createAircraft() {
+            const group = new THREE.Group();
+            
+            // Fuselage
+            const fuselageGeometry = new THREE.CylinderGeometry(15, 15, 100, 8);
+            const fuselageMaterial = new THREE.MeshLambertMaterial({ color: 0xCCCCCC });
+            const fuselage = new THREE.Mesh(fuselageGeometry, fuselageMaterial);
+            fuselage.rotation.z = Math.PI / 2;
+            group.add(fuselage);
+            
+            // Nose
+            const noseGeometry = new THREE.ConeGeometry(15, 30, 8);
+            const noseMaterial = new THREE.MeshLambertMaterial({ color: 0xCCCCCC });
+            const nose = new THREE.Mesh(noseGeometry, noseMaterial);
+            nose.rotation.z = -Math.PI / 2;
+            nose.position.x = 65;
+            group.add(nose);
+            
+            // Wings
+            const wingGeometry = new THREE.BoxGeometry(20, 5, 160);
+            const wingMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
+            const wings = new THREE.Mesh(wingGeometry, wingMaterial);
+            group.add(wings);
+            
+            // Tail
+            const tailGeometry = new THREE.BoxGeometry(30, 5, 40);
+            const tailMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
+            const tail = new THREE.Mesh(tailGeometry, tailMaterial);
+            tail.position.x = -50;
+            group.add(tail);
+            
+            // Vertical stabilizer
+            const stabilizerGeometry = new THREE.BoxGeometry(30, 30, 5);
+            const stabilizerMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
+            const stabilizer = new THREE.Mesh(stabilizerGeometry, stabilizerMaterial);
+            stabilizer.position.x = -50;
+            stabilizer.position.y = 15;
+            group.add(stabilizer);
+            
+            scene.add(group);
+            return group;
+        }
+        
+        // Flight controls
+        const keys = {};
+        
+        window.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+        });
+        
+        window.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+        });
+        
+        function updateAircraft() {
+            if (!aircraft) return;
+            
+            // Basic flight controls
+            const pitchAmount = 0.02;
+            const rollAmount = 0.03;
+            const yawAmount = 0.01;
+            const acceleration = 0.5;
+            const maxSpeed = 100;
+            
+            if (keys['w']) {
+                aircraft.rotation.z -= pitchAmount;
+            }
+            if (keys['s']) {
+                aircraft.rotation.z += pitchAmount;
+            }
+            if (keys['a']) {
+                aircraft.rotation.y += rollAmount;
+            }
+            if (keys['d']) {
+                aircraft.rotation.y -= rollAmount;
+            }
+            if (keys['q']) {
+                aircraft.rotation.x += yawAmount;
+            }
+            if (keys['e']) {
+                aircraft.rotation.x -= yawAmount;
+            }
+            if (keys[' ']) { // Space for boost
+                speed = Math.min(speed + acceleration * 2, maxSpeed * 1.5);
+            } else {
+                speed = Math.min(speed + acceleration, maxSpeed);
+            }
+            
+            // Calculate direction vector from rotation
+            const direction = new THREE.Vector3(0, 0, -1);
+            direction.applyQuaternion(aircraft.quaternion);
+            
+            // Move aircraft in that direction
+            aircraft.position.add(direction.multiplyScalar(speed / 10));
+            
+            // Update altitude
+            altitude = Math.max(0, aircraft.position.y + 200);
+            
+            // Update info display
+            speedElement.textContent = Math.floor(speed);
+            altitudeElement.textContent = Math.floor(altitude);
+            
+            // Move camera to follow aircraft
+            const cameraOffset = new THREE.Vector3(-100, 50, 0);
+            cameraOffset.applyQuaternion(aircraft.quaternion);
+            camera.position.copy(aircraft.position).add(cameraOffset);
+            camera.lookAt(aircraft.position);
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        // Start button click handler
+        startButton.addEventListener('click', () => {
+            playerName = playerNameInput.value.trim() || 'Pilot';
+            startGame();
+        });
+        
+        // Start the game
+        function startGame() {
+            startScreen.style.display = 'none';
+            aircraft = createAircraft();
+            aircraft.position.set(0, 0, 0);
+            gameStarted = true;
+        }
+        
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (gameStarted) {
+                updateAircraft();
+            }
+            
+            renderer.render(scene, camera);
+        }
+        
+        animate();
+    </script>
+</body>
+</html>
